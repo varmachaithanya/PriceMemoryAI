@@ -11,6 +11,13 @@ import { useTheme } from '@/contexts/ThemeContext';
 
 const unitTypes = ['kg', 'gram', 'liter', 'ml', 'piece', 'packet'] as const;
 
+function isGarbled(name: string): boolean {
+  if (!name || name.length < 2) return true;
+  const garbled = /[|\\{}<>[\]^_`~]{2,}|[^a-zA-Z0-9\s.,\-/+()&₹'"]/;
+  const specialRatio = (name.replace(/[a-zA-Z0-9\s]/g, '').length) / name.length;
+  return garbled.test(name) || specialRatio > 0.35;
+}
+
 export default function ReceiptReviewPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -164,11 +171,22 @@ export default function ReceiptReviewPage() {
             {items.map((item, idx) => (
               <div
                 key={idx}
-                className="flex flex-col gap-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700 sm:flex-row sm:items-center"
+                className={`flex flex-col gap-2 rounded-lg border p-3 dark:border-gray-700 sm:flex-row sm:items-center ${
+                  !isDone && isGarbled(item.name)
+                    ? 'border-amber-300 bg-amber-50/50 dark:border-amber-700 dark:bg-amber-900/10'
+                    : 'border-gray-200 dark:border-gray-700'
+                }`}
               >
                 <div className="flex-1 grid grid-cols-1 sm:grid-cols-4 gap-2">
                   <div className="sm:col-span-2">
-                    <label className="text-xs text-gray-500 dark:text-gray-400">Name</label>
+                    <label className="text-xs text-gray-500 dark:text-gray-400">
+                      Name{' '}
+                      {!isDone && isGarbled(item.name) && (
+                        <span className="ml-1 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                          low confidence
+                        </span>
+                      )}
+                    </label>
                     {isDone ? (
                       <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{item.name}</p>
                     ) : (

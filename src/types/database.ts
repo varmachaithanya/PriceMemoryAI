@@ -59,6 +59,7 @@ export interface ExtractedItem {
   unit: string;
   total_price: number;
   store_id: string | null;
+  confidence?: number;
 }
 
 export interface Receipt {

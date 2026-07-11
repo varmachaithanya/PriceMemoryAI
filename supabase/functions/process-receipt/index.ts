@@ -78,6 +78,9 @@ serve(async (req: Request) => {
     // Parse line items from OCR text
     const lineItems = parseLineItems(extractedText);
 
+    // Clean up garbled item names via Groq
+    const cleanedItems = await cleanupGarbledNames(lineItems, Deno.env.get('GROQ_API_KEY'));
+
     // Get user's existing products for matching
     const { data: existingProducts } = await supabase
       .from('products')
@@ -86,7 +89,7 @@ serve(async (req: Request) => {
 
     // Normalize items using Groq AI
     const normalizedItems = await normalizeItemsWithAI(
-      lineItems,
+      cleanedItems,
       existingProducts || [],
       Deno.env.get('GROQ_API_KEY'),
     );
@@ -271,6 +274,57 @@ function extractDate(text: string): string | null {
     }
   }
   return null;
+}
+
+async function cleanupGarbledNames(
+  items: Array<{ name: string; quantity: number; unit: string; total_price: number }>,
+  groqApiKey: string | undefined,
+): Promise<Array<{ name: string; quantity: number; unit: string; total_price: number }>> {
+  if (!groqApiKey || items.length === 0) return items;
+
+  const names = items.map((it) => it.name).join('\n');
+  if (!names.trim()) return items;
+
+  try {
+    const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${groqApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are cleaning up OCR errors from a grocery receipt. Given garbled item names, output a JSON array where each element has "raw" (the original garbled name) and "clean" (your best guess at the actual product name). If you cannot make a confident guess for a line, set "clean" to "UNKNOWN". Return ONLY the JSON array, nothing else.',
+          },
+          { role: 'user', content: names },
+        ],
+        temperature: 0,
+        max_tokens: 500,
+      }),
+    });
+
+    const data = await resp.json();
+    const content = data.choices?.[0]?.message?.content?.trim();
+    if (!content) return items;
+
+    const parsed = JSON.parse(content.replace(/```json\n?/g, '').replace(/```\n?/g, ''));
+    if (!Array.isArray(parsed)) return items;
+
+    return items.map((item) => {
+      const match = parsed.find((p: { raw: string; clean: string }) => p.raw === item.name);
+      if (match?.clean && match.clean !== 'UNKNOWN') {
+        return { ...item, name: match.clean };
+      }
+      return item;
+    });
+  } catch (err) {
+    console.error('OCR cleanup error:', err);
+    return items;
+  }
 }
 
 async function normalizeItemsWithAI(

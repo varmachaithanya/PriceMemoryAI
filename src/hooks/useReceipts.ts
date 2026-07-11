@@ -3,12 +3,61 @@ import { createWorker } from 'tesseract.js';
 import { supabase } from '@/services/supabase';
 import type { Receipt, ExtractedItem } from '@/types/database';
 
-async function runOcrOnImage(imageUrl: string): Promise<string> {
-  const worker = await createWorker('eng');
+interface OcrResult {
+  text: string;
+  confidence: number;
+}
+
+async function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+async function preprocessImage(url: string): Promise<Blob> {
+  const img = await loadImage(url);
+  const canvas = document.createElement('canvas');
+  const scale = Math.min(1, 2000 / Math.max(img.width, img.height));
+  canvas.width = img.width * scale;
+  canvas.height = img.height * scale;
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = imageData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    const value = gray > 140 ? 255 : 0;
+    d[i] = d[i + 1] = d[i + 2] = value;
+  }
+  ctx.putImageData(imageData, 0, 0);
+
+  return new Promise((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
+}
+
+async function runOcrOnImage(imageUrl: string): Promise<OcrResult> {
+  const blob = await preprocessImage(imageUrl);
+  const objectUrl = URL.createObjectURL(blob);
+
+  const worker = await createWorker('eng', undefined, {
+    logger: () => {},
+  });
+
   try {
-    const { data } = await worker.recognize(imageUrl);
-    return data.text;
+    await worker.setParameters({
+      tessedit_pageseg_mode: '6',
+      tessedit_char_whitelist:
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,-/+()*&@#$%: ',
+    });
+
+    const { data } = await worker.recognize(objectUrl);
+    return { text: data.text, confidence: data.confidence };
   } finally {
+    URL.revokeObjectURL(objectUrl);
     await worker.terminate();
   }
 }
@@ -72,7 +121,6 @@ export function useUploadReceipt() {
         .from('receipts')
         .getPublicUrl(fileName);
 
-      // Create receipt record
       const { data, error } = await supabase
         .from('receipts')
         .insert({
@@ -85,13 +133,12 @@ export function useUploadReceipt() {
 
       if (error) throw error;
 
-      // Run Tesseract.js OCR client-side
-      let rawOcrText = '';
+      let ocrText = '';
       try {
-        rawOcrText = await runOcrOnImage(urlData.publicUrl);
+        const result = await runOcrOnImage(urlData.publicUrl);
+        ocrText = result.text;
       } catch (ocrErr) {
         console.error('Client-side OCR failed:', ocrErr);
-        // Mark as failed if OCR itself crashes
         await supabase
           .from('receipts')
           .update({ processing_status: 'failed' })
@@ -99,13 +146,12 @@ export function useUploadReceipt() {
         throw new Error(`OCR failed: ${ocrErr}`);
       }
 
-      // Send extracted text to Edge Function for parsing + normalization
       supabase.functions.invoke('process-receipt', {
         body: {
           receipt_id: data.id,
           user_id: userId,
           image_url: urlData.publicUrl,
-          raw_ocr_text: rawOcrText,
+          raw_ocr_text: ocrText,
         },
       }).catch((err) => console.error('Failed to invoke process-receipt:', err));
 
@@ -126,10 +172,10 @@ export function useRetryReceipt() {
         .update({ processing_status: 'processing' })
         .eq('id', receipt.id);
 
-      // Re-run client-side OCR
-      let rawOcrText = '';
+      let ocrText = '';
       try {
-        rawOcrText = await runOcrOnImage(receipt.image_url);
+        const result = await runOcrOnImage(receipt.image_url);
+        ocrText = result.text;
       } catch (ocrErr) {
         console.error('Client-side OCR failed on retry:', ocrErr);
         await supabase
@@ -144,7 +190,7 @@ export function useRetryReceipt() {
           receipt_id: receipt.id,
           user_id: receipt.user_id,
           image_url: receipt.image_url,
-          raw_ocr_text: rawOcrText,
+          raw_ocr_text: ocrText,
         },
       });
       if (error) throw error;
