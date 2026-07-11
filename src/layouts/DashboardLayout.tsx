@@ -19,7 +19,7 @@ const mobileTabs = [
   { name: 'Dashboard', href: '/dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
   { name: 'Purchases', href: '/purchases', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
   { name: 'Receipts', href: '/receipts', icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
-  { name: 'Alerts', href: '/profile?tab=alerts', icon: 'M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0', showBadge: true },
+  { name: 'Alerts', href: '/dashboard', icon: 'M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0', showBadge: true },
   { name: 'Profile', href: '/profile', icon: 'M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z' },
 ];
 
@@ -50,8 +50,7 @@ export default function DashboardLayout() {
     if (path === '/purchases') return '/purchases';
     if (path === '/receipts') return '/receipts';
     if (path === '/profile') return '/profile';
-    // If on alerts-related or any other page, none highlighted
-    return path;
+    return '';
   };
   const activeMobileHref = getActiveMobileTab();
 
@@ -123,8 +122,18 @@ export default function DashboardLayout() {
           <div className="hidden lg:block" />
 
           {/* Right side: theme toggle + profile (desktop only) + bell (desktop only) */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <ThemeToggle />
+            {/* Sign out — mobile only (desktop has it in profile dropdown) */}
+            <button
+              onClick={handleSignOut}
+              className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 md:hidden"
+              title="Sign out"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+              </svg>
+            </button>
             {/* Bell — desktop only (mobile has it in bottom tab bar) */}
             <Link
               to="/profile"
@@ -184,7 +193,7 @@ export default function DashboardLayout() {
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 md:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         <div className="flex items-stretch justify-around">
           {mobileTabs.map((tab) => {
-            const isActive = activeMobileHref === tab.href || (tab.name === 'Alerts' && location.pathname === '/profile');
+            const isActive = activeMobileHref === tab.href;
             return (
               <Link
                 key={tab.name}
@@ -199,7 +208,6 @@ export default function DashboardLayout() {
                   <svg className={`h-5 w-5 ${isActive ? 'stroke-[2.5]' : 'stroke-[1.5]'}`} fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d={tab.icon} />
                   </svg>
-                  {/* Badge dot for Alerts tab */}
                   {tab.showBadge && unreadCount != null && unreadCount > 0 && (
                     <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white">
                       {unreadCount > 9 ? '9+' : ''}
@@ -207,7 +215,6 @@ export default function DashboardLayout() {
                   )}
                 </div>
                 <span className={`leading-tight ${isActive ? 'font-bold' : ''}`}>{tab.name}</span>
-                {/* Active indicator dot */}
                 {isActive && (
                   <span className="mt-0.5 h-1 w-1 rounded-full bg-emerald-600 dark:bg-emerald-400" />
                 )}

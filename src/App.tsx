@@ -13,6 +13,7 @@ import ProductsPage from '@/pages/ProductsPage';
 import StoresPage from '@/pages/StoresPage';
 import PurchasesPage from '@/pages/PurchasesPage';
 import ReceiptsPage from '@/pages/ReceiptsPage';
+import ReceiptReviewPage from '@/pages/ReceiptReviewPage';
 import AnalyticsPage from '@/pages/AnalyticsPage';
 import ProfilePage from '@/pages/ProfilePage';
 import AdminDashboardPage from '@/pages/admin/AdminDashboardPage';
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="stores" element={<StoresPage />} />
         <Route path="purchases" element={<PurchasesPage />} />
         <Route path="receipts" element={<ReceiptsPage />} />
+        <Route path="receipts/:id/review" element={<ReceiptReviewPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="profile" element={<ProfilePage />} />
       </Route>

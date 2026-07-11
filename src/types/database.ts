@@ -1,6 +1,6 @@
 export type UserRole = 'user' | 'admin';
 export type UnitType = 'kg' | 'gram' | 'liter' | 'ml' | 'piece' | 'packet';
-export type ReceiptStatus = 'pending' | 'processing' | 'done' | 'failed';
+export type ReceiptStatus = 'pending' | 'processing' | 'needs_review' | 'done' | 'failed';
 export type AlertType = 'price_spike' | 'store_expensive' | 'inflation';
 export type ResolvedBy = 'fuzzy_match' | 'ai';
 
@@ -48,9 +48,17 @@ export interface Purchase {
   purchase_date: string;
   notes: string | null;
   created_at: string;
-  // Joined fields
   store?: Store;
   product?: Product;
+}
+
+export interface ExtractedItem {
+  name: string;
+  product_id: string | null;
+  quantity: number;
+  unit: string;
+  total_price: number;
+  store_id: string | null;
 }
 
 export interface Receipt {
@@ -59,6 +67,8 @@ export interface Receipt {
   image_url: string;
   receipt_date: string | null;
   processing_status: ReceiptStatus;
+  extracted_items: ExtractedItem[] | null;
+  raw_ocr_text: string | null;
   created_at: string;
 }
 

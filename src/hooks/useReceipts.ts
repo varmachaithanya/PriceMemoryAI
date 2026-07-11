@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/services/supabase';
-import type { Receipt } from '@/types/database';
+import type { Receipt, ExtractedItem } from '@/types/database';
 
 export function useReceipts(userId: string | undefined) {
   return useQuery({
@@ -24,6 +24,23 @@ export function useReceipts(userId: string | undefined) {
       );
       return hasProcessing ? 3000 : false;
     },
+  });
+}
+
+export function useReceipt(receiptId: string | undefined) {
+  return useQuery({
+    queryKey: ['receipt', receiptId],
+    queryFn: async () => {
+      if (!receiptId) return null;
+      const { data, error } = await supabase
+        .from('receipts')
+        .select('*')
+        .eq('id', receiptId)
+        .single();
+      if (error) throw error;
+      return data as Receipt;
+    },
+    enabled: !!receiptId,
   });
 }
 
@@ -56,7 +73,6 @@ export function useUploadReceipt() {
 
       if (error) throw error;
 
-      // Invoke Edge Function for processing
       supabase.functions.invoke('process-receipt', {
         body: {
           receipt_id: data.id,
@@ -77,13 +93,11 @@ export function useRetryReceipt() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (receipt: Receipt) => {
-      // Reset status to pending
       await supabase
         .from('receipts')
         .update({ processing_status: 'pending' })
         .eq('id', receipt.id);
 
-      // Re-invoke Edge Function
       const { error } = await supabase.functions.invoke('process-receipt', {
         body: {
           receipt_id: receipt.id,
@@ -95,6 +109,83 @@ export function useRetryReceipt() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['receipts'] });
+    },
+  });
+}
+
+export function useUpdateExtractedItems() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ receiptId, items }: { receiptId: string; items: ExtractedItem[] }) => {
+      const { error } = await supabase
+        .from('receipts')
+        .update({ extracted_items: items as unknown as Record<string, unknown>[] })
+        .eq('id', receiptId);
+      if (error) throw error;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['receipts'] });
+      queryClient.invalidateQueries({ queryKey: ['receipt', variables.receiptId] });
+    },
+  });
+}
+
+export function useSaveExtractedItems() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ receipt, items }: { receipt: Receipt; items: ExtractedItem[] }) => {
+      const validItems = items.filter((item) => item.total_price > 0);
+
+      for (const item of validItems) {
+        let productId = item.product_id;
+        if (!productId && item.name) {
+          // Create product inline if not matched
+          const { data: newProduct, error: prodErr } = await supabase
+            .from('products')
+            .insert({
+              user_id: receipt.user_id,
+              canonical_name: item.name,
+              unit_type: (item.unit as 'kg' | 'gram' | 'liter' | 'ml' | 'piece' | 'packet') || 'piece',
+              category: null,
+              brand: null,
+            })
+            .select()
+            .single();
+          if (prodErr) throw prodErr;
+          productId = newProduct.id;
+        }
+
+        if (productId) {
+          const unitPrice = item.total_price / item.quantity;
+          const { error: purchaseErr } = await supabase.from('purchases').insert({
+            user_id: receipt.user_id,
+            store_id: item.store_id || null,
+            product_id: productId,
+            quantity: item.quantity,
+            unit: (item.unit as 'kg' | 'gram' | 'liter' | 'ml' | 'piece' | 'packet') || 'piece',
+            total_price: item.total_price,
+            unit_price: unitPrice,
+            purchase_date: receipt.receipt_date || new Date().toISOString().split('T')[0],
+            notes: 'Extracted from receipt',
+          });
+          if (purchaseErr) throw purchaseErr;
+        }
+      }
+
+      const { error } = await supabase
+        .from('receipts')
+        .update({
+          processing_status: 'done',
+          extracted_items: items as unknown as Record<string, unknown>[],
+        })
+        .eq('id', receipt.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['receipts'] });
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useReceipts, useUploadReceipt, useDeleteReceipt, useRetryReceipt } from '@/hooks/useReceipts';
 import Spinner from '@/components/ui/Spinner';
@@ -8,8 +9,17 @@ import EmptyState from '@/components/ui/EmptyState';
 const statusVariant: Record<string, 'default' | 'info' | 'success' | 'warning' | 'danger'> = {
   pending: 'warning',
   processing: 'info',
+  needs_review: 'warning',
   done: 'success',
   failed: 'danger',
+};
+
+const statusLabel: Record<string, string> = {
+  pending: 'Pending',
+  processing: 'Processing',
+  needs_review: 'Needs Review',
+  done: 'Done',
+  failed: 'Failed',
 };
 
 function isTimedOut(receipt: { processing_status: string; created_at: string }) {
@@ -21,6 +31,7 @@ function isTimedOut(receipt: { processing_status: string; created_at: string }) 
 export default function ReceiptsPage() {
   const { user } = useAuth();
   const userId = user?.id;
+  const navigate = useNavigate();
   const { data: receipts, isLoading } = useReceipts(userId);
   const uploadReceipt = useUploadReceipt();
   const deleteReceipt = useDeleteReceipt();
@@ -89,6 +100,7 @@ export default function ReceiptsPage() {
           {receipts.map((receipt) => {
             const timedOut = isTimedOut(receipt);
             const effectiveStatus = timedOut ? 'failed' : receipt.processing_status;
+            const itemCount = Array.isArray(receipt.extracted_items) ? receipt.extracted_items.length : 0;
             return (
               <div key={receipt.id} className="card group">
                 <div className="aspect-[4/3] overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800 mb-3">
@@ -108,12 +120,29 @@ export default function ReceiptsPage() {
                     </p>
                     <p className="text-xs text-gray-400">
                       {new Date(receipt.created_at).toLocaleDateString()}
+                      {itemCount > 0 && ` · ${itemCount} item${itemCount !== 1 ? 's' : ''}`}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant={statusVariant[effectiveStatus] || 'default'}>
-                      {effectiveStatus}
+                      {statusLabel[effectiveStatus] || effectiveStatus}
                     </Badge>
+                    {effectiveStatus === 'needs_review' && (
+                      <button
+                        onClick={() => navigate(`/receipts/${receipt.id}/review`)}
+                        className="text-xs font-medium text-emerald-600 hover:text-emerald-500"
+                      >
+                        Review
+                      </button>
+                    )}
+                    {effectiveStatus === 'done' && (
+                      <button
+                        onClick={() => navigate(`/receipts/${receipt.id}/review`)}
+                        className="text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                      >
+                        View
+                      </button>
+                    )}
                     {effectiveStatus === 'failed' && (
                       <button
                         onClick={() => retryReceipt.mutate(receipt)}

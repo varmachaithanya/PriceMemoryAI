@@ -45,14 +45,14 @@ serve(async (req: Request) => {
       extractedText = await extractTextWithGoogleVision(imageUrl, googleApiKey);
     }
 
-    // If no OCR or empty result, try Groq to parse any text hints from filename/metadata
+    // If no OCR provider configured, mark needs_review with empty items
     if (!extractedText) {
-      // No OCR available — mark as done but with no auto-extracted items
-      // User can manually add purchases from the receipt
       await supabase
         .from('receipts')
         .update({
-          processing_status: 'done',
+          processing_status: 'needs_review',
+          raw_ocr_text: '',
+          extracted_items: [],
           receipt_date: new Date().toISOString().split('T')[0],
         })
         .eq('id', receiptId);
@@ -60,8 +60,9 @@ serve(async (req: Request) => {
       return new Response(
         JSON.stringify({
           success: true,
+          status: 'needs_review',
           items_found: 0,
-          message: 'Receipt saved. No OCR provider configured — manually add items from this receipt.',
+          message: 'No OCR provider configured. Add items manually.',
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -96,46 +97,40 @@ serve(async (req: Request) => {
       storeId = stores?.[0]?.id || null;
     }
 
-    // Insert purchases for each normalized item
-    let insertedCount = 0;
-    for (const item of normalizedItems) {
-      if (item.product_id && item.total_price > 0) {
-        const unitPrice = item.total_price / item.quantity;
-        await supabase.from('purchases').insert({
-          user_id: userId,
-          store_id: storeId,
-          product_id: item.product_id,
-          quantity: item.quantity,
-          unit: item.unit || 'piece',
-          total_price: item.total_price,
-          unit_price: unitPrice,
-          purchase_date: item.purchase_date || new Date().toISOString().split('T')[0],
-          notes: 'Auto-extracted from receipt',
-        });
-        insertedCount++;
-      }
-    }
+    // Build extracted_items array for the review screen
+    const extractedItems = normalizedItems.map((item) => ({
+      name: item.raw_name || item.product_id || 'Unknown',
+      product_id: item.product_id,
+      quantity: item.quantity,
+      unit: item.unit,
+      total_price: item.total_price,
+      store_id: storeId,
+    }));
 
-    // Extract receipt date
     const receiptDate = extractDate(extractedText);
 
-    // Update status to done
+    // Always mark as needs_review so user can verify before saving
     await supabase
       .from('receipts')
       .update({
-        processing_status: 'done',
+        processing_status: 'needs_review',
+        raw_ocr_text: extractedText,
+        extracted_items: JSON.stringify(extractedItems),
         receipt_date: receiptDate || new Date().toISOString().split('T')[0],
       })
       .eq('id', receiptId);
 
     return new Response(
-      JSON.stringify({ success: true, items_found: insertedCount }),
+      JSON.stringify({
+        success: true,
+        status: 'needs_review',
+        items_found: extractedItems.length,
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
     console.error('Receipt processing error:', error);
 
-    // Mark as failed if we have the receipt ID
     if (receiptId) {
       try {
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -159,7 +154,6 @@ serve(async (req: Request) => {
 
 async function extractTextWithGoogleVision(imageUrl: string, apiKey: string): Promise<string> {
   try {
-    // Fetch the image
     const imageResponse = await fetch(imageUrl);
     const imageBuffer = await imageResponse.arrayBuffer();
     const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
@@ -195,12 +189,10 @@ function parseLineItems(text: string): Array<{
   const lines = text.split('\n').filter((l) => l.trim());
   const items: Array<{ name: string; quantity: number; unit: string; total_price: number }> = [];
 
-  // Common patterns in Indian receipts
   const pricePattern = /[\u20B9Rs.*]*\s*(\d+(?:\.\d{1,2})?)/i;
   const qtyPattern = /(\d+(?:\.\d+)?)\s*(kg|g|gm|gram|ltr|l|ml|pcs?|pkt|pack|no)/i;
 
   for (const line of lines) {
-    // Skip header/footer lines
     if (/^(total|subtotal|tax|gst|vat|change|cash|card|upi|date|time|tel|phone|address)/i.test(line.trim())) {
       continue;
     }
@@ -242,7 +234,6 @@ function normalizeUnit(raw: string): string {
 }
 
 function extractStoreName(text: string): string | null {
-  // Usually first few lines contain store name
   const lines = text.split('\n').slice(0, 5);
   for (const line of lines) {
     const trimmed = line.trim();
@@ -254,7 +245,6 @@ function extractStoreName(text: string): string | null {
 }
 
 function extractDate(text: string): string | null {
-  // Look for common date patterns
   const datePatterns = [
     /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/,
     /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+(\d{2,4})/i,
@@ -287,10 +277,10 @@ async function normalizeItemsWithAI(
   unit: string;
   total_price: number;
   purchase_date: string;
+  raw_name: string;
 }>> {
   const today = new Date().toISOString().split('T')[0];
 
-  // First try simple fuzzy matching
   const results = items.map((item) => {
     const match = existingProducts.find(
       (p) => p.canonical_name.toLowerCase() === item.name.toLowerCase()
@@ -307,7 +297,6 @@ async function normalizeItemsWithAI(
     };
   });
 
-  // For unmatched items, use Groq AI to normalize names
   const unmatched = results.filter((r) => r.needsAI);
   if (unmatched.length > 0 && groqApiKey) {
     const existingNames = existingProducts.map((p) => p.canonical_name).join(', ') || 'none';
@@ -342,7 +331,6 @@ async function normalizeItemsWithAI(
           for (const ai of parsed) {
             const result = results.find((r) => r.raw_name === ai.raw);
             if (result && ai.canonical) {
-              // Try to find matching product
               const match = existingProducts.find(
                 (p) => p.canonical_name.toLowerCase() === ai.canonical.toLowerCase()
               );
@@ -357,12 +345,13 @@ async function normalizeItemsWithAI(
     }
   }
 
-  return results.map(({ product_id, store_id, quantity, unit, total_price, purchase_date }) => ({
+  return results.map(({ product_id, store_id, quantity, unit, total_price, purchase_date, raw_name }) => ({
     product_id,
     store_id,
     quantity,
     unit,
     total_price,
     purchase_date,
+    raw_name,
   }));
 }
