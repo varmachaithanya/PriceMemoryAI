@@ -23,6 +23,7 @@ serve(async (req: Request) => {
     receiptId = body.receipt_id;
     const userId = body.user_id;
     const imageUrl = body.image_url;
+    const clientOcrText = body.raw_ocr_text as string | undefined;
 
     if (!receiptId || !userId || !imageUrl) {
       return new Response(
@@ -37,16 +38,22 @@ serve(async (req: Request) => {
       .update({ processing_status: 'processing' })
       .eq('id', receiptId);
 
-    // Try OCR via Google Cloud Vision if API key is set
-    const googleApiKey = Deno.env.get('GOOGLE_CLOUD_VISION_API_KEY');
-    let extractedText = '';
+    // Get OCR text: prefer client-provided (Tesseract.js), fallback to Google Vision
+    let extractedText = clientOcrText || '';
 
-    if (googleApiKey) {
-      extractedText = await extractTextWithGoogleVision(imageUrl, googleApiKey);
+    if (!extractedText) {
+      const googleApiKey = Deno.env.get('GOOGLE_CLOUD_VISION_API_KEY');
+      if (googleApiKey) {
+        extractedText = await extractTextWithGoogleVision(imageUrl, googleApiKey);
+      }
     }
 
-    // If no OCR provider configured, mark needs_review with empty items
-    if (!extractedText) {
+    // If still no text, that means OCR ran but found nothing, or no provider exists
+    // If clientOcrText was provided (even empty), OCR ran — mark needs_review
+    // If nothing was provided at all, that's the fallback path
+    if (!extractedText && clientOcrText === undefined) {
+      // No OCR provider configured at all — but we should never reach here
+      // if the client is running Tesseract.js. This is a safety fallback.
       await supabase
         .from('receipts')
         .update({
@@ -62,7 +69,7 @@ serve(async (req: Request) => {
           success: true,
           status: 'needs_review',
           items_found: 0,
-          message: 'No OCR provider configured. Add items manually.',
+          message: 'No OCR text provided. Add items manually.',
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );

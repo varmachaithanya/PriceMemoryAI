@@ -1,6 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { createWorker } from 'tesseract.js';
 import { supabase } from '@/services/supabase';
 import type { Receipt, ExtractedItem } from '@/types/database';
+
+async function runOcrOnImage(imageUrl: string): Promise<string> {
+  const worker = await createWorker('eng');
+  try {
+    const { data } = await worker.recognize(imageUrl);
+    return data.text;
+  } finally {
+    await worker.terminate();
+  }
+}
 
 export function useReceipts(userId: string | undefined) {
   return useQuery({
@@ -61,23 +72,40 @@ export function useUploadReceipt() {
         .from('receipts')
         .getPublicUrl(fileName);
 
+      // Create receipt record
       const { data, error } = await supabase
         .from('receipts')
         .insert({
           user_id: userId,
           image_url: urlData.publicUrl,
-          processing_status: 'pending',
+          processing_status: 'processing',
         })
         .select()
         .single();
 
       if (error) throw error;
 
+      // Run Tesseract.js OCR client-side
+      let rawOcrText = '';
+      try {
+        rawOcrText = await runOcrOnImage(urlData.publicUrl);
+      } catch (ocrErr) {
+        console.error('Client-side OCR failed:', ocrErr);
+        // Mark as failed if OCR itself crashes
+        await supabase
+          .from('receipts')
+          .update({ processing_status: 'failed' })
+          .eq('id', data.id);
+        throw new Error(`OCR failed: ${ocrErr}`);
+      }
+
+      // Send extracted text to Edge Function for parsing + normalization
       supabase.functions.invoke('process-receipt', {
         body: {
           receipt_id: data.id,
           user_id: userId,
           image_url: urlData.publicUrl,
+          raw_ocr_text: rawOcrText,
         },
       }).catch((err) => console.error('Failed to invoke process-receipt:', err));
 
@@ -95,14 +123,28 @@ export function useRetryReceipt() {
     mutationFn: async (receipt: Receipt) => {
       await supabase
         .from('receipts')
-        .update({ processing_status: 'pending' })
+        .update({ processing_status: 'processing' })
         .eq('id', receipt.id);
+
+      // Re-run client-side OCR
+      let rawOcrText = '';
+      try {
+        rawOcrText = await runOcrOnImage(receipt.image_url);
+      } catch (ocrErr) {
+        console.error('Client-side OCR failed on retry:', ocrErr);
+        await supabase
+          .from('receipts')
+          .update({ processing_status: 'failed' })
+          .eq('id', receipt.id);
+        throw new Error(`OCR failed: ${ocrErr}`);
+      }
 
       const { error } = await supabase.functions.invoke('process-receipt', {
         body: {
           receipt_id: receipt.id,
           user_id: receipt.user_id,
           image_url: receipt.image_url,
+          raw_ocr_text: rawOcrText,
         },
       });
       if (error) throw error;
