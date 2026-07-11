@@ -16,10 +16,16 @@ serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Verify the request comes from pg_cron or has service role
+    // Accept service role (pg_cron) or authenticated user JWT
     const authHeader = req.headers.get('Authorization');
     if (authHeader !== `Bearer ${supabaseServiceKey}`) {
-      return new Response('Unauthorized', { status: 401, headers: corsHeaders });
+      const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authHeader ?? '' } },
+      });
+      const { data: { user } } = await userClient.auth.getUser();
+      if (!user) {
+        return new Response('Unauthorized', { status: 401, headers: corsHeaders });
+      }
     }
 
     // Get all active users
