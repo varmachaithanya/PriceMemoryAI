@@ -44,6 +44,7 @@ export default function PurchasesPage() {
       ...data,
       user_id: userId,
       unit_price: data.total_price / data.quantity,
+      notes: data.notes || null,
     });
     setModalOpen(false);
     reset({ quantity: 1, unit: 'piece', purchase_date: new Date().toISOString().split('T')[0] });

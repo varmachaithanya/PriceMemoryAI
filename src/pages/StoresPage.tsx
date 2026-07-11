@@ -47,7 +47,12 @@ export default function StoresPage() {
     if (editingStore) {
       await updateStore.mutateAsync({ id: editingStore.id, ...data });
     } else {
-      await createStore.mutateAsync({ ...data, user_id: userId });
+      await createStore.mutateAsync({
+        ...data,
+        user_id: userId,
+        address: data.address || null,
+        city: data.city || null,
+      });
     }
     setModalOpen(false);
     reset();

@@ -51,7 +51,12 @@ export default function ProductsPage() {
     if (editingProduct) {
       await updateProduct.mutateAsync({ id: editingProduct.id, ...data });
     } else {
-      await createProduct.mutateAsync({ ...data, user_id: userId });
+      await createProduct.mutateAsync({
+        ...data,
+        user_id: userId,
+        category: data.category || null,
+        brand: data.brand || null,
+      });
     }
     setModalOpen(false);
     reset();

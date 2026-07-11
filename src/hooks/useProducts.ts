@@ -68,7 +68,7 @@ export function useUpdateProduct() {
       if (error) throw error;
       return data as Product;
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
     },
   });

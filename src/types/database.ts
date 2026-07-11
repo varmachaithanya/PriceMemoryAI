@@ -142,3 +142,30 @@ export interface NormalizedQuantity {
   unit: string;
   confidence: 'high' | 'low';
 }
+
+export type Database = {
+  public: {
+    Tables: {
+      profiles: { Row: Profile; Insert: Omit<Profile, 'created_at' | 'updated_at'>; Update: Partial<Omit<Profile, 'id' | 'created_at' | 'updated_at'>> };
+      stores: { Row: Store; Insert: Omit<Store, 'id' | 'created_at'>; Update: Partial<Omit<Store, 'id' | 'created_at'>> };
+      products: { Row: Product; Insert: Omit<Product, 'id' | 'created_at'>; Update: Partial<Omit<Product, 'id' | 'created_at'>> };
+      purchases: { Row: Purchase; Insert: Omit<Purchase, 'id' | 'created_at' | 'store' | 'product'>; Update: Partial<Omit<Purchase, 'id' | 'created_at' | 'store' | 'product'>> };
+      receipts: { Row: Receipt; Insert: Omit<Receipt, 'id' | 'created_at'>; Update: Partial<Omit<Receipt, 'id' | 'created_at'>> };
+      alerts: { Row: Alert; Insert: Omit<Alert, 'id' | 'created_at' | 'product'>; Update: Partial<Omit<Alert, 'id' | 'created_at' | 'product'>> };
+      item_aliases: { Row: ItemAlias; Insert: Omit<ItemAlias, 'id' | 'created_at'>; Update: Partial<Omit<ItemAlias, 'id' | 'created_at'>> };
+    };
+    Functions: {
+      get_dashboard_stats: { Args: { uid: string }; Returns: DashboardStats };
+      get_product_price_stats: { Args: { uid: string; pid: string }; Returns: ProductPriceStats };
+      get_lowest_price: { Args: { uid: string; pid: string }; Returns: number };
+      get_highest_price: { Args: { uid: string; pid: string }; Returns: number };
+      get_average_price: { Args: { uid: string; pid: string }; Returns: number };
+      get_price_change_percentage: { Args: { uid: string; pid: string }; Returns: number };
+      get_personal_inflation: { Args: { uid: string }; Returns: InflationData[] };
+      get_admin_stats: { Args: Record<string, never>; Returns: AdminStats };
+      get_store_stats: { Args: { uid: string; sid: string }; Returns: StoreStats };
+      get_price_trend: { Args: { uid: string; pid: string; period?: string }; Returns: PriceTrend[] };
+      get_spending_trend: { Args: { uid: string }; Returns: SpendingTrend[] };
+    };
+  };
+};
