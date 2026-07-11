@@ -1,5 +1,6 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 
 const adminNav = [
   { name: 'Overview', href: '/admin' },
@@ -55,6 +56,7 @@ export default function AdminLayout() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <ThemeToggle />
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700">
                 {profile?.full_name?.charAt(0)?.toUpperCase() || 'A'}

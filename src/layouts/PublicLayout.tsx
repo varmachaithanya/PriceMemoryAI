@@ -1,4 +1,5 @@
 import { Outlet, Link } from 'react-router-dom';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 
 export default function PublicLayout() {
   return (
@@ -16,7 +17,8 @@ export default function PublicLayout() {
               Price Memory <span className="text-emerald-600">AI</span>
             </span>
           </Link>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
             <Link
               to="/login"
               className="text-sm font-medium text-gray-700 hover:text-emerald-600 dark:text-gray-300"

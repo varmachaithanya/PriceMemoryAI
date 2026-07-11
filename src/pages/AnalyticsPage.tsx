@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useProducts } from '@/hooks/useProducts';
 import { usePriceTrend, useSpendingTrend, usePersonalInflation } from '@/hooks/useDashboard';
 import Spinner from '@/components/ui/Spinner';
+import { useTheme } from '@/contexts/ThemeContext';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 const periods = [
@@ -21,6 +22,13 @@ export default function AnalyticsPage() {
   const { data: priceTrend, isLoading: trendLoading } = usePriceTrend(userId, selectedProduct || undefined, period);
   const { data: spendingTrend, isLoading: spendingLoading } = useSpendingTrend(userId);
   const { data: inflation, isLoading: inflationLoading } = usePersonalInflation(userId);
+  const { resolvedTheme } = useTheme();
+
+  const isDark = resolvedTheme === 'dark';
+  const chartTextColor = isDark ? '#9ca3af' : '#6b7280';
+  const chartGridColor = isDark ? '#374151' : '#e5e7eb';
+  const chartTooltipBg = isDark ? '#1f2937' : '#ffffff';
+  const chartTooltipBorder = isDark ? '#374151' : '#e5e7eb';
 
   const priceTrendData = (priceTrend || []).map((t) => ({
     name: t.date_label,
@@ -83,10 +91,10 @@ export default function AnalyticsPage() {
         ) : priceTrendData.length > 0 ? (
           <ResponsiveContainer width="100%" height={300}>
             <AreaChart data={priceTrendData}>
-              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} />
-              <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+              <XAxis dataKey="name" tick={{ fontSize: 12, fill: chartTextColor }} />
+              <YAxis tick={{ fontSize: 12, fill: chartTextColor }} />
+              <Tooltip contentStyle={{ backgroundColor: chartTooltipBg, border: `1px solid ${chartTooltipBorder}`, borderRadius: '8px' }} />
               <Area type="monotone" dataKey="price" stroke="#10b981" fill="#10b981" fillOpacity={0.1} name="Avg Price (₹)" />
             </AreaChart>
           </ResponsiveContainer>
@@ -106,10 +114,10 @@ export default function AnalyticsPage() {
           ) : spendingData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={spendingData}>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                <XAxis dataKey="name" tick={{ fontSize: 12, fill: chartTextColor }} />
+                <YAxis tick={{ fontSize: 12, fill: chartTextColor }} />
+                <Tooltip contentStyle={{ backgroundColor: chartTooltipBg, border: `1px solid ${chartTooltipBorder}`, borderRadius: '8px' }} />
                 <Bar dataKey="spend" fill="#10b981" radius={[4, 4, 0, 0]} name="Total Spend (₹)" />
               </BarChart>
             </ResponsiveContainer>
@@ -126,10 +134,10 @@ export default function AnalyticsPage() {
           ) : inflationData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={inflationData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis type="number" tick={{ fontSize: 12 }} />
-                <YAxis dataKey="name" type="category" tick={{ fontSize: 12 }} width={100} />
-                <Tooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                <XAxis type="number" tick={{ fontSize: 12, fill: chartTextColor }} />
+                <YAxis dataKey="name" type="category" tick={{ fontSize: 12, fill: chartTextColor }} width={100} />
+                <Tooltip contentStyle={{ backgroundColor: chartTooltipBg, border: `1px solid ${chartTooltipBorder}`, borderRadius: '8px' }} />
                 <Legend />
                 <Bar dataKey="change" fill="#10b981" name="Change %" />
               </BarChart>

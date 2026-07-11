@@ -68,3 +68,18 @@ export function useMarkAllAlertsRead() {
     },
   });
 }
+
+export function useGenerateAlerts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const { error } = await supabase.functions.invoke('generate-alerts', {
+        body: { user_id: userId },
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts'] });
+    },
+  });
+}

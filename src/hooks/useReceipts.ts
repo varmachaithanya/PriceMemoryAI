@@ -16,6 +16,14 @@ export function useReceipts(userId: string | undefined) {
       return data as Receipt[];
     },
     enabled: !!userId,
+    refetchInterval: (query) => {
+      const receipts = query.state.data as Receipt[] | undefined;
+      if (!receipts) return false;
+      const hasProcessing = receipts.some(
+        (r) => r.processing_status === 'pending' || r.processing_status === 'processing'
+      );
+      return hasProcessing ? 3000 : false;
+    },
   });
 }
 
@@ -47,10 +55,46 @@ export function useUploadReceipt() {
         .single();
 
       if (error) throw error;
+
+      // Invoke Edge Function for processing
+      supabase.functions.invoke('process-receipt', {
+        body: {
+          receipt_id: data.id,
+          user_id: userId,
+          image_url: urlData.publicUrl,
+        },
+      }).catch((err) => console.error('Failed to invoke process-receipt:', err));
+
       return data as Receipt;
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['receipts', variables.userId] });
+    },
+  });
+}
+
+export function useRetryReceipt() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (receipt: Receipt) => {
+      // Reset status to pending
+      await supabase
+        .from('receipts')
+        .update({ processing_status: 'pending' })
+        .eq('id', receipt.id);
+
+      // Re-invoke Edge Function
+      const { error } = await supabase.functions.invoke('process-receipt', {
+        body: {
+          receipt_id: receipt.id,
+          user_id: receipt.user_id,
+          image_url: receipt.image_url,
+        },
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['receipts'] });
     },
   });
 }

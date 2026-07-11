@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useReceipts, useUploadReceipt, useDeleteReceipt } from '@/hooks/useReceipts';
+import { useReceipts, useUploadReceipt, useDeleteReceipt, useRetryReceipt } from '@/hooks/useReceipts';
 import Spinner from '@/components/ui/Spinner';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
@@ -12,12 +12,19 @@ const statusVariant: Record<string, 'default' | 'info' | 'success' | 'warning' |
   failed: 'danger',
 };
 
+function isTimedOut(receipt: { processing_status: string; created_at: string }) {
+  if (receipt.processing_status !== 'processing' && receipt.processing_status !== 'pending') return false;
+  const elapsed = Date.now() - new Date(receipt.created_at).getTime();
+  return elapsed > 2 * 60 * 1000;
+}
+
 export default function ReceiptsPage() {
   const { user } = useAuth();
   const userId = user?.id;
   const { data: receipts, isLoading } = useReceipts(userId);
   const uploadReceipt = useUploadReceipt();
   const deleteReceipt = useDeleteReceipt();
+  const retryReceipt = useRetryReceipt();
   const [dragOver, setDragOver] = useState(false);
 
   const handleUpload = async (file: File) => {
@@ -46,7 +53,6 @@ export default function ReceiptsPage() {
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Upload receipts for automatic price extraction</p>
       </div>
 
-      {/* Upload area */}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
@@ -80,41 +86,54 @@ export default function ReceiptsPage() {
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {receipts.map((receipt) => (
-            <div key={receipt.id} className="card group">
-              <div className="aspect-[4/3] overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800 mb-3">
-                <img
-                  src={receipt.image_url}
-                  alt="Receipt"
-                  className="h-full w-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="%239ca3af"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>';
-                  }}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {receipt.receipt_date || 'No date'}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {new Date(receipt.created_at).toLocaleDateString()}
-                  </p>
+          {receipts.map((receipt) => {
+            const timedOut = isTimedOut(receipt);
+            const effectiveStatus = timedOut ? 'failed' : receipt.processing_status;
+            return (
+              <div key={receipt.id} className="card group">
+                <div className="aspect-[4/3] overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800 mb-3">
+                  <img
+                    src={receipt.image_url}
+                    alt="Receipt"
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="%239ca3af"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>';
+                    }}
+                  />
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant={statusVariant[receipt.processing_status] || 'default'}>
-                    {receipt.processing_status}
-                  </Badge>
-                  <button
-                    onClick={() => deleteReceipt.mutate(receipt)}
-                    className="text-xs text-red-500 hover:text-red-400"
-                  >
-                    Delete
-                  </button>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {receipt.receipt_date || 'No date'}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {new Date(receipt.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={statusVariant[effectiveStatus] || 'default'}>
+                      {effectiveStatus}
+                    </Badge>
+                    {effectiveStatus === 'failed' && (
+                      <button
+                        onClick={() => retryReceipt.mutate(receipt)}
+                        disabled={retryReceipt.isPending}
+                        className="text-xs font-medium text-emerald-600 hover:text-emerald-500 disabled:opacity-50"
+                      >
+                        {retryReceipt.isPending ? 'Retrying...' : 'Retry'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => deleteReceipt.mutate(receipt)}
+                      className="text-xs text-red-500 hover:text-red-400"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

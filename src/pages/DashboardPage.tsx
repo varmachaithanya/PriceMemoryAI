@@ -1,8 +1,9 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { useDashboardStats, useSpendingTrend, usePersonalInflation } from '@/hooks/useDashboard';
-import { useAlerts } from '@/hooks/useAlerts';
+import { useAlerts, useGenerateAlerts } from '@/hooks/useAlerts';
 import Spinner from '@/components/ui/Spinner';
 import Badge from '@/components/ui/Badge';
+import { useTheme } from '@/contexts/ThemeContext';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 function StatCard({ label, value, icon, change }: { label: string; value: string | number; icon: React.ReactNode; change?: number }) {
@@ -34,6 +35,14 @@ export default function DashboardPage() {
   const { data: spendingTrend, isLoading: spendingLoading } = useSpendingTrend(userId);
   const { data: inflation, isLoading: inflationLoading } = usePersonalInflation(userId);
   const { data: alerts } = useAlerts(userId);
+  const generateAlerts = useGenerateAlerts();
+  const { resolvedTheme } = useTheme();
+
+  const isDark = resolvedTheme === 'dark';
+  const chartTextColor = isDark ? '#9ca3af' : '#6b7280';
+  const chartGridColor = isDark ? '#374151' : '#e5e7eb';
+  const chartTooltipBg = isDark ? '#1f2937' : '#ffffff';
+  const chartTooltipBorder = isDark ? '#374151' : '#e5e7eb';
 
   const unreadAlerts = alerts?.filter((a) => !a.read) || [];
 
@@ -109,13 +118,13 @@ export default function DashboardPage() {
               ) : spendingData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={300}>
                   <AreaChart data={spendingData}>
-                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                    <XAxis dataKey="name" tick={{ fontSize: 12, fill: chartTextColor }} />
+                    <YAxis tick={{ fontSize: 12, fill: chartTextColor }} />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: 'white',
-                        border: '1px solid #e5e7eb',
+                        backgroundColor: chartTooltipBg,
+                        border: `1px solid ${chartTooltipBorder}`,
                         borderRadius: '8px',
                       }}
                     />
@@ -129,7 +138,16 @@ export default function DashboardPage() {
 
             {/* Recent Alerts */}
             <div className="card">
-              <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-gray-100">Recent Alerts</h2>
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Recent Alerts</h2>
+                <button
+                  onClick={() => userId && generateAlerts.mutate(userId)}
+                  disabled={generateAlerts.isPending}
+                  className="text-xs font-medium text-emerald-600 hover:text-emerald-500 disabled:opacity-50"
+                >
+                  {generateAlerts.isPending ? 'Checking...' : 'Check for alerts now'}
+                </button>
+              </div>
               {unreadAlerts.length > 0 ? (
                 <div className="space-y-3">
                   {unreadAlerts.slice(0, 5).map((alert) => (
